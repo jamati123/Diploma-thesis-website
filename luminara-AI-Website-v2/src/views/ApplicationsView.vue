@@ -17,11 +17,11 @@
           Chat mit Ollama 
         </router-link>
         <router-link
-          to="/applications/chat"
+          to="/applications/vision"
           class="sidebar-link"
           active-class="active"
         >
-          Chat 
+          Luminara Vision Models
         </router-link>
         <router-link
           to="/applications/chatgpt"

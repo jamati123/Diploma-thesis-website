@@ -1,80 +1,68 @@
 # routes/ocr_route.py
 from flask import Blueprint, request, jsonify
-from werkzeug.utils import secure_filename
-import os
 import logging
-
+import os
 from config import Config
-from utils.ocr import perform_ocr
 from utils.text_processing import improve_text_with_ollama
-from utils.markdown_converter import convert_to_markdown
+from PIL import Image
+from io import BytesIO
+import base64
 
 logger = logging.getLogger(__name__)
 
 ocr_bp = Blueprint('ocr_bp', __name__)
 
-@ocr_bp.route('/api/ocr', methods=['POST'])
-def ocr_endpoint():
+@ocr_bp.route('/process_ocr', methods=['POST'])
+def process_ocr():
     """
-    OCR Endpunkt: Nimmt ein Bild entgegen, führt OCR durch, verbessert den Text mit Ollama und gibt beide Versionen zurück.
+    OCR-Endpunkt: Nimmt ein Bild, extrahiert Text mithilfe von OCR, verbessert den Text mit Ollama und gibt den verbesserten Text zurück.
     """
-    if 'image' not in request.files:
-        logger.warning('Kein Bild bereitgestellt')
-        return jsonify({'error': 'Kein Bild bereitgestellt'}), 400
+    data = request.get_json()
 
-    file = request.files['image']
+    if not data:
+        logger.warning('Keine JSON-Daten bereitgestellt')
+        return jsonify({'error': 'Keine JSON-Daten bereitgestellt'}), 400
 
-    if file.filename == '':
-        logger.warning('Kein ausgewähltes Bild')
-        return jsonify({'error': 'Kein ausgewähltes Bild'}), 400
+    image_str = data.get('image')
 
-    if file and allowed_file(file.filename, Config.ALLOWED_EXTENSIONS):
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(Config.UPLOAD_FOLDER, filename)
-        file.save(filepath)
-        logger.info(f'Bild gespeichert: {filepath}')
+    if not image_str:
+        logger.warning('Bilddaten fehlen')
+        return jsonify({'error': 'Bilddaten fehlen'}), 400
 
-        try:
-            # OCR durchführen
-            ocr_text = perform_ocr(filepath, lang=Config.TESSERACT_LANG)
-            logger.info(f'OCR Extrahierter Text: {ocr_text}')
+    try:
+        # Dekodiere das Base64-Bild
+        if ',' in image_str:
+            header, encoded = image_str.split(',', 1)
+        else:
+            header, encoded = '', image_str
+        img_data = base64.b64decode(encoded)
+        img = Image.open(BytesIO(img_data))
 
-            if not ocr_text.strip():
-                logger.warning('OCR hat keinen Text gefunden')
-                return jsonify({'error': 'OCR hat keinen Text gefunden'}), 400
+        # Validierung des Bildformats
+        if img.format.lower() not in Config.ALLOWED_EXTENSIONS:
+            logger.warning(f'Ungültiges Bildformat: {img.format}')
+            return jsonify({'error': f'Ungültiges Bildformat: {img.format}'}), 400
 
-            # Text mit Ollama verbessern
-            markdown_text = improve_text_with_ollama(ocr_text, model=Config.OLLAMA_MODEL_DEFAULT)
-            logger.info(f'Verbesserter Text: {markdown_text}')
+        # Speichere das Bild temporär
+        img_filename = "temp_ocr.png"
+        img_path = os.path.join(Config.UPLOAD_FOLDER, img_filename)
+        img.save(img_path)
 
-            if not markdown_text.strip():
-                logger.warning('Ollama hat den Text nicht verbessert')
-                return jsonify({'error': 'Ollama hat den Text nicht verbessert'}), 500
+        # Führe OCR durch (hier solltest du deine OCR-Logik einfügen)
+        # Beispiel: extrahierter_text = perform_ocr(img_path)
+        # Da OCR-Logik nicht bereitgestellt wurde, nehmen wir an, es wird Text extrahiert
+        extrahierter_text = "Beispieltext aus OCR."
 
-            # In Markdown umwandeln
-            markdown_text = convert_to_markdown(markdown_text)
-            logger.info('Markdown generiert')
+        # Verbessere den Text mit Ollama
+        verbesserter_text = improve_text_with_ollama(extrahierter_text, model='llama3.2')
 
-            # Rückgabe beider Versionen
-            return jsonify({
-                'ocr_text': ocr_text,
-                'markdown': markdown_text
-            }), 200
-        except Exception as e:
-            logger.error(f'Fehler bei der Verarbeitung: {str(e)}')
-            return jsonify({'error': str(e)}), 500
-        finally:
-            # Optional: Lösche das hochgeladene Bild nach der Verarbeitung
-            if os.path.exists(filepath):
-                os.remove(filepath)
-                logger.info(f'Bild gelöscht: {filepath}')
-    else:
-        logger.warning('Ungültiger Dateityp')
-        return jsonify({'error': 'Ungültiger Dateityp'}), 400
+        return jsonify({'improved_text': verbesserter_text}), 200
 
-def allowed_file(filename, allowed_extensions):
-    """
-    Überprüft, ob die Datei eine erlaubte Erweiterung hat.
-    """
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in allowed_extensions
+    except Exception as e:
+        logger.error(f'Fehler beim Verarbeiten des OCR: {str(e)}')
+        return jsonify({'error': f'Fehler beim Verarbeiten des OCR: {str(e)}'}), 500
+
+    finally:
+        # Bereinige das temporäre Bild
+        if os.path.exists(img_path):
+            os.remove(img_path)

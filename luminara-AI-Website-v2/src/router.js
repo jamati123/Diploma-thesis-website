@@ -15,10 +15,10 @@ import OCRView from '../src/views/OCRView.vue';
 
 // Importieren Sie die Sidebar-Komponenten als Unterrouten
 import LuminaraOllama from '../src/components/LuminaraOllama.vue';
-import OllamaChat from '../src/components/OllamaChat.vue';
 import LuminaraImage from '../src/components/LuminaraImage.vue';
 import LuminaraGallery from '../src/components/LuminaraGallery.vue';
 import ChatGPT from '../src/components/ChatGPTComponent.vue';
+import LuminaraVision from '../src/components/LuminaraVision.vue';
 
 import LoginComponent from "../src/components/LoginComponent";
 import RegisterComponent from "../src/components/RegisterComponent";
@@ -53,11 +53,7 @@ const routes = [
         name: 'LuminaraOllama',
         component: LuminaraOllama,
       },
-      {
-        path: 'chat',
-        name: 'OllamaChat',
-        component: OllamaChat,
-      },
+
       {
         path: 'image',
         name: 'LuminaraImage',
@@ -72,6 +68,11 @@ const routes = [
         path: 'chatgpt',
         name: 'ChatGPT',
         component: ChatGPT,
+      },
+      {
+        path: 'vision',
+        name: 'LuminaraVision',
+        component: LuminaraVision,
       },
     ],
   },

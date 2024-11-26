@@ -1,31 +1,22 @@
 <template>
-  <div class="ollama-chat">
-    <h2>Powered by Ollama and Flask-API</h2>
+  <div class="ollama-chat-vision">
+    <h2>Powered by Llama 3.2-Vision and Flask-API</h2>
     <h4>
-      Genereller Chatbot für die Kommunikation mit Ollama, einem KI-Modell, das
-      auf der LLaMA-Architektur basiert.
+      Multimodaler Chatbot für die Kommunikation mit Llama 3.2-Vision, einem
+      KI-Modell für Bild- und Textanfragen.
     </h4>
 
     <!-- Dark Mode Toggle Button -->
-    <!--button class="dark-mode-toggle" @click="toggleDarkMode">
+    <button class="dark-mode-toggle" @click="toggleDarkMode">
       {{ isDarkMode ? "Light Mode" : "Dark Mode" }}
-    </button-->
+    </button>
 
     <!-- Dropdown zur Auswahl des KI-Modells -->
     <div class="model-selection" :class="{ 'dark-mode': isDarkMode }">
       <label for="model">Wähle ein KI-Modell:</label>
       <select v-model="selectedModel" id="model">
-        <option value="llama3.2:1b">
-          LLaMA 3.2 - 1B von Meta (Besonders schnell)
-        </option>
-        <option value="llama3.2">
-          LLaMA 3.2 - 2B von Meta (neuestes Modell, langsamer als 1B)
-        </option>
-        <option value="gemma2">Gemma2 von Google (langsamer)</option>
-        <option value="llama3.1">
-          LLaMA 3.1 von Meta (älter und langsamer)
-        </option>
-        <option value="llava:13b">LLaVA 13B (am langsamsten)</option>
+        <option value="llama3.2-vision">Llama 3.2-Vision</option>
+        <!-- Weitere Modelle können hier hinzugefügt werden -->
       </select>
     </div>
 
@@ -45,13 +36,20 @@
       </div>
     </div>
 
-    <!-- Eingabefeld und Button -->
+    <!-- Eingabefeld, Bild-Upload und Button -->
     <div class="input-area">
       <input
         v-model="userInput"
-        placeholder="Frag Ollama..."
+        placeholder="Frag Llama 3.2-Vision..."
         @keydown.enter="sendMessage"
         class="chat-input"
+      />
+      <input
+        type="file"
+        @change="handleImageUpload"
+        accept="image/*"
+        class="image-input"
+        multiple
       />
       <button @click="sendMessage" class="send-button" :disabled="loading">
         <i class="fas fa-paper-plane"></i> Absenden
@@ -60,7 +58,10 @@
 
     <div v-if="loading" class="loading">Lädt...</div>
     <div v-if="error" class="error">
-      <p>Es gab ein Problem bei der Kommunikation mit Ollama: {{ error }}</p>
+      <p>
+        Es gab ein Problem bei der Kommunikation mit Llama 3.2-Vision:
+        {{ error }}
+      </p>
     </div>
   </div>
 </template>
@@ -79,15 +80,16 @@ export default {
       userInput: "",
       loading: false,
       error: "",
-      messages: [], // Hier werden die Nachrichten (Benutzer + Ollama) gespeichert
-      selectedModel: "llama3.2:1b", // Standardmäßig ausgewähltes Modell für Ollama
+      messages: [], // Hier werden die Nachrichten (Benutzer + Llama) gespeichert
+      selectedModel: "llama3.2-vision", // Standardmäßig ausgewähltes Modell
       isDarkMode: false, // Dark Mode Status
+      imageFiles: [], // Hier werden die hochgeladenen Bilder gespeichert
     };
   },
   methods: {
     async sendMessage() {
-      if (this.userInput.trim() === "") {
-        this.error = "Prompt darf nicht leer sein!";
+      if (this.userInput.trim() === "" && this.imageFiles.length === 0) {
+        this.error = "Prompt und/oder Bild dürfen nicht leer sein!";
         return;
       }
 
@@ -97,14 +99,31 @@ export default {
       this.loading = true;
       this.error = "";
 
+      // Bereite die Bilder vor
+      let base64Images = [];
+      if (this.imageFiles.length > 0) {
+        try {
+          base64Images = await Promise.all(
+            this.imageFiles.map((file) => this.convertToBase64(file))
+          );
+        } catch (e) {
+          this.error = "Fehler beim Konvertieren der Bilder.";
+          this.loading = false;
+          return;
+        }
+      }
+
+      const payload = {
+        model: this.selectedModel,
+        prompt: this.userInput, // Direktes Feld für den Prompt
+        images: base64Images, // Direktes Feld für die Bilder
+      };
+
       try {
-        // Anfrage an Ollama senden
+        // Anfrage an das Flask-Backend senden
         const response = await axios.post(
-          "http://localhost:5000/ask_ollama",
-          {
-            prompt: this.userInput,
-            model: this.selectedModel,
-          }
+          "http://localhost:5000/ask_ollama_vision",
+          payload
         );
 
         if (response.data.choices) {
@@ -118,16 +137,18 @@ export default {
       } finally {
         this.loading = false;
         this.userInput = ""; // Eingabefeld zurücksetzen
+        this.imageFiles = []; // Zurücksetzen der Bild-Dateien
         this.$nextTick(() => {
           this.attachCopyButtons();
         });
       }
     },
+
     toggleDarkMode() {
       this.isDarkMode = !this.isDarkMode;
       document.body.classList.toggle("dark-mode", this.isDarkMode);
       this.$el
-        .querySelector(".ollama-chat")
+        .querySelector(".ollama-chat-vision")
         .classList.toggle("dark-mode", this.isDarkMode);
     },
     renderMarkdown(text) {
@@ -159,8 +180,8 @@ export default {
       }).use(markdownItKatex);
 
       // Überschreiben des Codeblock-Renderers
-      /* eslint-disable no-unused-vars */
-      md.renderer.rules.fence = function (tokens, idx, options, env, self) {
+      md.renderer.rules.fence = function (tokens, idx) {
+        // Prefix unused vars with _
         const token = tokens[idx];
         const code = token.content;
         const lang = token.info.trim().split(/\s+/g)[0];
@@ -172,15 +193,14 @@ export default {
 
         // Render den Codeblock mit einem Copy-Button
         return `
-    <div class="code-block">
-      <button class="copy-button" data-clipboard-target="#${uniqueId}">Copy</button>
-      <pre class="hljs"><code id="${uniqueId}" class="${lang}">${md.utils.escapeHtml(
+            <div class="code-block">
+              <button class="copy-button" data-clipboard-target="#${uniqueId}">Copy</button>
+              <pre class="hljs"><code id="${uniqueId}" class="${lang}">${md.utils.escapeHtml(
           code
         )}</code></pre>
-    </div>
-  `;
+            </div>
+          `;
       };
-      /* eslint-enable no-unused-vars */
 
       return md.render(text);
     },
@@ -208,6 +228,20 @@ export default {
         });
       });
     },
+    handleImageUpload(event) {
+      const files = event.target.files;
+      if (files && files.length > 0) {
+        this.imageFiles = Array.from(files).slice(0, 5); // Beschränke auf maximal 5 Bilder
+      }
+    },
+    convertToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = (error) => reject(error);
+      });
+    },
   },
   watch: {
     messages() {
@@ -228,7 +262,7 @@ export default {
 
 <style scoped>
 /* Grundlegende Stile für die Chat-Komponente */
-.ollama-chat {
+.ollama-chat-vision {
   font-family: "Roboto", sans-serif;
   margin: 20px auto;
   padding: 25px;
@@ -244,13 +278,13 @@ export default {
 }
 
 /* Dark Mode Stile */
-.ollama-chat.dark-mode {
+.ollama-chat-vision.dark-mode {
   background-color: #1e1e1e; /* Dunkles Grau für den Hintergrund */
   border-color: #444; /* Dunkleres Grau für Ränder */
   box-shadow: 0 4px 20px rgba(255, 255, 255, 0.1); /* Heller Schatten */
 }
 
-.ollama-chat.dark-mode h2 {
+.ollama-chat-vision.dark-mode h2 {
   color: #bb86fc; /* Kräftiges Lila im Dark Mode */
 }
 
@@ -276,16 +310,16 @@ export default {
   transform: scale(0.98);
 }
 
-.ollama-chat.dark-mode .dark-mode-toggle {
+.ollama-chat-vision.dark-mode .dark-mode-toggle {
   background-color: #bb86fc; /* Kräftiges Lila im Dark Mode */
 }
 
-.ollama-chat.dark-mode .dark-mode-toggle:hover {
+.ollama-chat-vision.dark-mode .dark-mode-toggle:hover {
   background-color: #985eff; /* Etwas dunkleres Lila für Hover im Dark Mode */
 }
 
 /* Überschrift */
-.ollama-chat h2 {
+.ollama-chat-vision h2 {
   font-size: 1.8rem;
   color: #1e90ff; /* Kräftiges Blau */
   text-align: center;
@@ -304,7 +338,7 @@ export default {
   color: #333;
 }
 
-.ollama-chat.dark-mode .model-selection label {
+.ollama-chat-vision.dark-mode .model-selection label {
   color: #fff;
 }
 
@@ -317,7 +351,7 @@ export default {
   transition: border-color 0.3s;
 }
 
-.ollama-chat.dark-mode .model-selection select {
+.ollama-chat-vision.dark-mode .model-selection select {
   background-color: #333;
   color: #fff;
   border-color: #1e90ff; /* Kräftiges Blau für Fokus */
@@ -328,7 +362,7 @@ export default {
   outline: none;
 }
 
-.ollama-chat.dark-mode .model-selection select:focus {
+.ollama-chat-vision.dark-mode .model-selection select:focus {
   border-color: #bb86fc; /* Kräftiges Lila für Fokus im Dark Mode */
 }
 
@@ -346,7 +380,7 @@ export default {
   gap: 10px;
 }
 
-.ollama-chat.dark-mode .chat-box {
+.ollama-chat-vision.dark-mode .chat-box {
   background-color: #2a2f32; /* Dunkleres Grau für Chat-Bubbles im Dark Mode */
   box-shadow: inset 0 2px 8px rgba(255, 255, 255, 0.1); /* Hellerer innerer Schatten */
 }
@@ -367,7 +401,7 @@ export default {
   color: #004085; /* Dunkles Blau für Text */
 }
 
-.ollama-chat.dark-mode .message.user {
+.ollama-chat-vision.dark-mode .message.user {
   background-color: #3333cc; /* Dunkles Blau für Benutzernachrichten im Dark Mode */
   color: #e0e0e0; /* Helles Grau für Text im Dark Mode */
 }
@@ -378,7 +412,7 @@ export default {
   color: #155724; /* Dunkles Grün für Text */
 }
 
-.ollama-chat.dark-mode .message.ollama {
+.ollama-chat-vision.dark-mode .message.ollama {
   background-color: #228b22; /* Dunkles Grün für Ollama-Nachrichten im Dark Mode */
   color: #f1f1f1; /* Helles Grau für Text im Dark Mode */
 }
@@ -401,7 +435,7 @@ export default {
   color: #333;
 }
 
-.ollama-chat.dark-mode .chat-input {
+.ollama-chat-vision.dark-mode .chat-input {
   background-color: #333;
   color: #fff;
   border-color: #1e90ff; /* Kräftiges Blau für Fokus */
@@ -412,8 +446,24 @@ export default {
   outline: none;
 }
 
-.ollama-chat.dark-mode .chat-input:focus {
+.ollama-chat-vision.dark-mode .chat-input:focus {
   border-color: #bb86fc; /* Kräftiges Lila für Fokus im Dark Mode */
+}
+
+/* Bild-Upload */
+.image-input {
+  padding: 12px 15px;
+  border: 1px solid #ced4da; /* Neutrales Grau für Ränder */
+  border-radius: 8px;
+  font-size: 1rem;
+  background-color: #fff;
+  color: #333;
+}
+
+.ollama-chat-vision.dark-mode .image-input {
+  background-color: #333;
+  color: #fff;
+  border-color: #1e90ff; /* Kräftiges Blau für Fokus */
 }
 
 /* Senden-Button */
@@ -441,11 +491,11 @@ export default {
   transform: translateY(0);
 }
 
-.ollama-chat.dark-mode .send-button {
+.ollama-chat-vision.dark-mode .send-button {
   background-color: #bb86fc; /* Kräftiges Lila im Dark Mode */
 }
 
-.ollama-chat.dark-mode .send-button:hover {
+.ollama-chat-vision.dark-mode .send-button:hover {
   background-color: #985eff; /* Etwas dunkleres Lila für Hover im Dark Mode */
 }
 
@@ -466,7 +516,7 @@ export default {
   border: 1px solid #dc3545; /* Auffälliges Rot für Fehler */
 }
 
-.ollama-chat.dark-mode .error {
+.ollama-chat-vision.dark-mode .error {
   background-color: #721c24; /* Dunkleres Rot für Fehlerhintergrund im Dark Mode */
   color: #f8d7da; /* Helles Rot für Text im Dark Mode */
   border-color: #f5c6cb; /* Hellere Ränder für Fehler im Dark Mode */
@@ -501,11 +551,11 @@ export default {
 }
 
 /* Styling für Codeblöcke im Dark Mode */
-.ollama-chat.dark-mode .copy-button {
+.ollama-chat-vision.dark-mode .copy-button {
   background-color: #bb86fc;
 }
 
-.ollama-chat.dark-mode .copy-button:hover {
+.ollama-chat-vision.dark-mode .copy-button:hover {
   background-color: #985eff;
 }
 
@@ -539,7 +589,7 @@ export default {
 
 /* Responsive Anpassungen */
 @media (max-width: 768px) {
-  .ollama-chat {
+  .ollama-chat-vision {
     padding: 20px;
   }
 
@@ -554,7 +604,7 @@ export default {
 }
 
 @media (max-width: 480px) {
-  .ollama-chat {
+  .ollama-chat-vision {
     padding: 15px;
   }
 
@@ -568,6 +618,10 @@ export default {
   }
 
   .chat-input {
+    padding: 10px 12px;
+  }
+
+  .image-input {
     padding: 10px 12px;
   }
 }

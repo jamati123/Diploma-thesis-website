@@ -1,6 +1,10 @@
 # utils/text_processing.py
 from ollama import chat, ResponseError
 import logging
+from PIL import Image
+from io import BytesIO
+import base64
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +72,43 @@ def ask_ollama(prompt, model='llama3.2:1b'):
             {
                 'role': 'user',
                 'content': prompt
+            }
+        ]
+
+        # Sende die Anfrage an Ollama
+        response = chat(
+            model=model,
+            messages=messages,
+            stream=False
+        )
+
+        # Extrahiere die Antwort
+        bot_response = response.message.content.strip()
+
+        if not bot_response:
+            logger.error('Ollama hat keine Antwort zurückgegeben.')
+            raise Exception('Ollama konnte keine Antwort generieren.')
+
+        return {'choices': [{'text': bot_response}]}
+
+    except ResponseError as e:
+        logger.error(f'Ollama ResponseError: {e.error}')
+        return {'error': f'Ollama API Fehler: {e.error}'}
+    except Exception as e:
+        logger.error(f'Ollama Fehler: {str(e)}')
+        return {'error': str(e)}
+
+def ask_ollama_vision(prompt, model='llama3.2-vision', image_paths=[]):
+    """
+    Sendet eine Benutzeranfrage mit Bildern an das ausgewählte Ollama-Modell und gibt die Antwort zurück.
+    """
+    try:
+        # Definiere die Nachrichtenstruktur mit Bildern
+        messages = [
+            {
+                'role': 'user',
+                'content': prompt,
+                'images': image_paths  # Liste der Bildpfade
             }
         ]
 
