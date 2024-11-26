@@ -1,14 +1,21 @@
+<!-- src/App.vue -->
 <template>
   <div id="app" :class="{ 'dark-mode': isDarkMode }">
     <!-- Obere Navbar -->
     <header class="top-navbar">
       <nav>
         <router-link to="/" class="nav-link" exact-active-class="active">Home</router-link>
-        <router-link to="/dashboard" class="nav-link" exact-active-class="active">Dashboard</router-link>
-        <router-link to="/account" class="nav-link" exact-active-class="active">Account</router-link>
-        <router-link to="/applications" class="nav-link" exact-active-class="active">Applications</router-link> <!-- Link zur ApplicationsView -->
+        <router-link v-if="isAuthenticated" to="/dashboard" class="nav-link" exact-active-class="active">Dashboard</router-link>
+        <router-link v-if="isAuthenticated" to="/account" class="nav-link" exact-active-class="active">Account</router-link>
+        <router-link v-if="isAuthenticated" to="/applications" class="nav-link" exact-active-class="active">Applications</router-link>
+        <router-link v-if="!isAuthenticated" to="/register" class="nav-link" exact-active-class="active">Registrieren</router-link>
+        <router-link v-if="!isAuthenticated" to="/login" class="nav-link" exact-active-class="active">Login</router-link>
+        <button v-if="isAuthenticated" @click="logout" class="nav-button">Logout</button>
       </nav>
-      <!-- Login/Logout/Registrierung Buttons -->
+      <!-- Dark Mode Toggle Button in der Top Navbar -->
+      <button class="dark-mode-toggle" @click="toggleDarkMode">
+        {{ isDarkMode ? 'Light Mode' : 'Dark Mode' }}
+      </button>
     </header>
 
     <!-- Router View für Hauptansichten -->
@@ -17,28 +24,45 @@
 </template>
 
 <script>
+import AuthService from './services/auth';
+
 export default {
   name: 'App',
   data() {
     return {
       isDarkMode: false, // Dark Mode Status
+      isAuthenticated: AuthService.isAuthenticated(), // Authentifizierungsstatus
     };
   },
-  methods: {
-    toggleDarkMode() {
-      this.isDarkMode = !this.isDarkMode;
-      // Speichere den Dark Mode Status im Local Storage
-      localStorage.setItem('isDarkMode', this.isDarkMode);
-    },
+// In den Methoden von App.vue
+methods: {
+  toggleDarkMode() {
+    this.isDarkMode = !this.isDarkMode;
+    localStorage.setItem('isDarkMode', this.isDarkMode);
   },
-  created() {
-    // Lade den Dark Mode Status aus dem Local Storage
-    const savedMode = localStorage.getItem('isDarkMode');
-    if (savedMode !== null) {
-      this.isDarkMode = JSON.parse(savedMode);
-    }
+  logout() {
+    AuthService.logout();
+    this.isAuthenticated = false;
+    this.$router.push('/login');
+    // Event-Emitter
+    this.$emit('auth-status-changed', false);
   },
+  updateAuthStatus(status) {
+    this.isAuthenticated = status;
+  },
+},
+/*
+created() {
+  // ...
+  this.$on('auth-status-changed', this.updateAuthStatus);
+},
+beforeUnmount() {
+  this.$off('auth-status-changed', this.updateAuthStatus);
+},
+*/
 };
+
+
 </script>
 
 <style scoped>
@@ -145,4 +169,59 @@ export default {
     gap: 10px;
   }
 }
+/* Stile für die Navbar und Buttons */
+
+.top-navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  background-color: #3498db;
+}
+
+.nav-link {
+  margin-right: 15px;
+  color: white;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.nav-link.active {
+  text-decoration: underline;
+}
+
+.nav-button {
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.nav-button:hover {
+  background-color: #c0392b;
+}
+
+.dark-mode-toggle {
+  background-color: transparent;
+  border: 2px solid white;
+  color: white;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.dark-mode-toggle:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.dark-mode {
+  background-color: #121212;
+  color: #f0f0f0;
+}
+
+/* Weitere Stile nach Bedarf */
 </style>
