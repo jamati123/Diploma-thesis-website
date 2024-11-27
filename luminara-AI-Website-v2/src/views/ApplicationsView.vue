@@ -24,6 +24,13 @@
           Luminara Vision Models
         </router-link>
         <router-link
+          to="/applications/code"
+          class="sidebar-link"
+          active-class="active"
+        >
+          Programming Bots
+        </router-link>
+        <router-link
           to="/applications/chatgpt"
             class="sidebar-link"
             active-class="active"

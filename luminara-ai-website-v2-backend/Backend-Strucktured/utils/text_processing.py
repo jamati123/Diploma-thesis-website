@@ -1,4 +1,5 @@
 # utils/text_processing.py
+
 from ollama import chat, ResponseError
 import logging
 from PIL import Image
@@ -8,7 +9,7 @@ import os
 
 logger = logging.getLogger(__name__)
 
-def improve_text_with_ollama(text, model='llama3.2'):
+def improve_text_with_ollama(text, model='llama3.2'):  #Das Modell könnte man hier ändern zum Beispiel auf 'llama3.2:1b' oder 'qwen2.5-coder'
     """
     Verbessert den gegebenen Text mithilfe der Ollama API und gibt den verbesserten Markdown-Text zurück.
     """
@@ -22,8 +23,9 @@ def improve_text_with_ollama(text, model='llama3.2'):
                     "Deine Aufgabe ist es, den folgenden Text, der durch OCR aus einem Bild extrahiert wurde, "
                     "zu verbessern und in gut strukturiertes Markdown-Format umzuwandeln. "
                     "Achte dabei auf korrekte Rechtschreibung, Grammatik und Satzbau. "
-                    "Formatiere den Text entsprechend seiner Inhalte mit geeigneten Markdown-Elementen wie Überschriften, Listen, Codeblöcken und Hervorhebungen."
+                    "Formatiere den Text entsprechend seiner Inhalte mit geeigneten Markdown-Elementen wie Überschriften, Listen, Codeblöcken und Hervorhebungen. "
                     "Antworten Sie mit dem verbesserten Markdown-Text, und nur dem Text, ohne zusätzliche Kommentare oder Erklärungen."
+                    "Antworte nur mit dem Verbesserten Text, ohne zusätzliche Kommentare oder Erklärungen."
                 )
             },
             {

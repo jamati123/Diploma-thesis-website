@@ -8,6 +8,9 @@ from PIL import Image
 from io import BytesIO
 import base64
 
+# Füge diese Zeilen hinzu:
+from ollama import chat, ResponseError
+
 logger = logging.getLogger(__name__)
 
 chat_bp = Blueprint('chat_bp', __name__)
@@ -112,3 +115,62 @@ def ask_ollama_vision_endpoint():
         for img_path in image_paths:
             if os.path.exists(img_path):
                 os.remove(img_path)
+
+
+@chat_bp.route('/ask_programming_bot', methods=['POST'])
+def ask_programming_bot_endpoint():
+    """
+    Programmierbot-Endpunkt: Nimmt eine Benutzeranfrage, kommuniziert mit Ollama und gibt die Antwort zurück.
+    """
+    data = request.get_json()
+
+    if not data:
+        logger.warning('Keine JSON-Daten bereitgestellt')
+        return jsonify({'error': 'Keine JSON-Daten bereitgestellt'}), 400
+
+    prompt = data.get('prompt')
+    model = data.get('model', 'qwen2.5-coder:0.5b')
+
+    if not prompt:
+        logger.warning('Prompt fehlt')
+        return jsonify({'error': 'Prompt fehlt'}), 400
+
+    try:
+        # Definiere eine spezielle Systemnachricht für den Programmierbot
+        messages = [
+            {
+                'role': 'system',
+                'content': (
+                    "Du bist ein erfahrene Programmiererin und technischer Beraterin namens Luminara. "
+                    "Beantworte Programmierfragen präzise und liefere klare Codebeispiele in der gefragten Programmiersprache."
+                )
+            },
+            {
+                'role': 'user',
+                'content': prompt
+            }
+        ]
+
+        # Sende die Anfrage an Ollama
+        response = chat(
+            model=model,
+            messages=messages,
+            stream=False
+        )
+
+        # Extrahiere die Antwort
+        bot_response = response.message.content.strip()
+
+        if not bot_response:
+            logger.error('Ollama hat keine Antwort zurückgegeben.')
+            raise Exception('Ollama konnte keine Antwort generieren.')
+
+        return {'choices': [{'text': bot_response}]}
+
+    except ResponseError as e:
+        logger.error(f'Ollama ResponseError: {e.error}')
+        return jsonify({'error': f'Ollama API Fehler: {e.error}'}), 500
+    except Exception as e:
+        logger.error(f'Ollama Fehler: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+

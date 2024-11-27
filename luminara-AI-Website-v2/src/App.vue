@@ -5,8 +5,9 @@
       <nav>
         <router-link to="/" class="nav-link" exact-active-class="active">Home</router-link>
         <router-link v-if="user" to="/account" class="nav-link" exact-active-class="active">Account</router-link>
-        <router-link v-if="user" to="/applications" class="nav-link" exact-active-class="active">Applications</router-link>
+        <router-link v-if="user" to="/applications" class="nav-link" exact-active-class="active">Chat Bots</router-link>
         <router-link v-if="user" to="/ocr" class="nav-link" exact-active-class="active">OCR</router-link>
+        
       </nav>
 
       <!-- Login/Logout/Registrierung Buttons -->

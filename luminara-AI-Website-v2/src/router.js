@@ -5,6 +5,7 @@
 // src/router/index.js
 import { createRouter, createWebHistory } from 'vue-router';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, getDoc } from 'firebase/firestore';
 
 // Importieren Sie Ihre Hauptansichten
 import HomeView from '../src/views/HomeView.vue';
@@ -19,10 +20,15 @@ import LuminaraImage from '../src/components/LuminaraImage.vue';
 import LuminaraGallery from '../src/components/LuminaraGallery.vue';
 import ChatGPT from '../src/components/ChatGPTComponent.vue';
 import LuminaraVision from '../src/components/LuminaraVision.vue';
+import LuminaraCode from '../src/components/LuminaraCode.vue';
 
 import LoginComponent from "../src/components/LoginComponent";
 import RegisterComponent from "../src/components/RegisterComponent";
 //import { meta } from '@babel/eslint-parser';
+
+import AdminDashboard from '../src/views/AdminDashboard.vue';
+import ApplicationDetails from '../src/components/ApplicationDetails.vue';
+
 
 const routes = [
   {
@@ -74,11 +80,18 @@ const routes = [
         name: 'LuminaraVision',
         component: LuminaraVision,
       },
+      {
+        path: 'code',
+        name: 'LuminaraCode',
+        component: LuminaraCode,
+      },
     ],
   },
   { path: '/ocr', name: 'OCR', component: OCRView },
   { path: "/login", name: "Login", component: LoginComponent },
   { path: "/register", name: "Register", component: RegisterComponent },
+  { path: '/admin', component: AdminDashboard, meta: { requiresAdmin: true } },
+  { path: '/admin/applications/:id', component: ApplicationDetails, meta: { requiresAdmin: true } },
 ];
 
 const router = createRouter({
@@ -104,6 +117,39 @@ router.beforeEach((to, from, next) => {
     });
   } else {
     // Keine Authentifizierung erforderlich
+    next();
+  }
+});
+
+
+// Navigation Guard für Admin-Routen
+router.beforeEach(async (to, from, next) => {
+  const auth = getAuth();
+  const currentUser = auth.currentUser;
+
+  if (to.matched.some(record => record.meta.requiresAdmin)) {
+    if (currentUser) {
+      const db = getFirestore();
+      const userRef = doc(db, "users", currentUser.uid);
+      try {
+        const userDoc = await getDoc(userRef);
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          if (userData.role === 'admin') {
+            next();
+          } else {
+            next('/account'); // Weiterleitung zu Account-Dashboard
+          }
+        } else {
+          next('/login');
+        }
+      } catch (error) {
+        next('/login');
+      }
+    } else {
+      next('/login');
+    }
+  } else {
     next();
   }
 });

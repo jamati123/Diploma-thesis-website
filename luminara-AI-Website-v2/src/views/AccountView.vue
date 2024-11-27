@@ -17,7 +17,7 @@
           </div>
           <div class="info-item">
             <strong>Verbleibende Tokens:</strong>
-            <p>{{ tokens }}</p>
+            <p>{{ tokensDisplay }}</p>
           </div>
           <div class="info-item">
             <strong>Registriert am:</strong>
@@ -33,12 +33,30 @@
           <button v-if="role === 'student'" @click="requestStudentPlus">
             Student+ beantragen
           </button>
+          <router-link v-if="role === 'admin'" to="/admin">
+            <button class="admin-button">
+              Admin Dashboard
+            </button>
+          </router-link>
           <button class="logout" @click="logout">Abmelden</button>
         </div>
       </section>
 
-      <!-- Dashboard-Bereich -->
-      <section class="dashboard-section">
+      <!-- Dashboard-Bereich (nur für Admins anzeigen) -->
+      <section v-if="role === 'admin'" class="admin-dashboard-section">
+        <h2>Admin Funktionen</h2>
+        <div class="admin-actions">
+          <router-link to="/admin">
+            <button class="admin-button">
+              Admin Dashboard
+            </button>
+          </router-link>
+          <!-- Weitere Admin-spezifische Aktionen hier hinzufügen -->
+        </div>
+      </section>
+
+      <!-- User-spezifische Dashboard-Bereich -->
+      <section class="dashboard-section" v-if="role !== 'admin'">
         <h2>Dashboard</h2>
         <div class="dashboard-widgets">
           <div class="widget">
@@ -102,6 +120,9 @@ export default {
           }).format(this.lastLogin.toDate())
         : "Unbekannt";
     },
+    tokensDisplay() {
+      return this.role === 'admin' ? 'Unbegrenzt' : this.tokens;
+    }
   },
   async created() {
     try {
@@ -112,7 +133,8 @@ export default {
       if (currentUser) {
         this.email = currentUser.email;
 
-        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+        const userRef = doc(db, "users", currentUser.uid);
+        const userDoc = await getDoc(userRef); // Verwenden Sie getDoc statt userRef.get()
         if (userDoc.exists()) {
           const data = userDoc.data();
           this.tokens = data.tokens || 0;
@@ -126,6 +148,7 @@ export default {
         }
       } else {
         this.errorMessage = "Benutzer ist nicht eingeloggt.";
+        this.$router.push("/login");
       }
     } catch (err) {
       this.errorMessage = "Fehler beim Laden der Benutzerdaten: " + err.message;
@@ -209,7 +232,8 @@ export default {
 }
 
 .account-section,
-.dashboard-section {
+.dashboard-section,
+.admin-dashboard-section {
   background: #fff;
   padding: 20px;
   border-radius: 10px;
@@ -217,7 +241,8 @@ export default {
 }
 
 .account-section h2,
-.dashboard-section h2 {
+.dashboard-section h2,
+.admin-dashboard-section h2 {
   margin-bottom: 20px;
   font-size: 1.5rem;
   color: #333;
@@ -236,7 +261,8 @@ export default {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-.account-actions button {
+.account-actions button,
+.admin-actions button {
   margin: 10px 5px;
   padding: 10px 20px;
   background: #3498db;
@@ -247,7 +273,8 @@ export default {
   transition: background-color 0.3s;
 }
 
-.account-actions button:hover {
+.account-actions button:hover,
+.admin-actions button:hover {
   background: #2980b9;
 }
 
@@ -257,6 +284,14 @@ button.logout {
 
 button.logout:hover {
   background: #c0392b;
+}
+
+button.admin-button {
+  background: #2ecc71;
+}
+
+button.admin-button:hover {
+  background: #27ae60;
 }
 
 .dashboard-widgets {
@@ -283,5 +318,18 @@ button.logout:hover {
   color: red;
   text-align: center;
   margin-top: 20px;
+}
+
+/* Responsive Anpassungen */
+@media (max-width: 768px) {
+  .content {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .account-dashboard {
+    padding: 20px;
+  }
 }
 </style>

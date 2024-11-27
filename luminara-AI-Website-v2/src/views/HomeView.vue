@@ -90,7 +90,7 @@
           Bei Fragen oder Anregungen kannst du dich gerne an mich wenden:
         </p>
         <p class="text-lg text-gray-700 mb-2">
-          <strong>E-Mail:</strong> <a href="mailto:luna.schaetzle.website@gmail.com" class="text-blue-500 underline">luna.schaetzle.website@gmail.com</a>
+          <strong>E-Mail:</strong> <a href="mailto:LuminaraAI.Website@gmail.com" class="text-blue-500 underline">LuminaraAI.Website@gmail.com</a>
         </p>
         <p class="text-lg text-gray-700">
           <strong>GitHub:</strong> <a href="https://github.com/Luna-Schaetzle" class="text-blue-500 underline" target="_blank">Luna-Schaetzle</a>

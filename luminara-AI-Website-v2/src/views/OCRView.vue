@@ -1,293 +1,445 @@
 <template>
-    <div class="ocr-container">
-      <h1>OCR Verarbeitung</h1>
-      <div class="upload-section">
-        <input type="file" @change="handleFileUpload" accept="image/*" />
-        <img v-if="imageSrc" :src="imageSrc" alt="Bildvorschau" class="image-preview" />
-        <button @click="processImage" :disabled="!imageFile || loading">
-          {{ loading ? 'Verarbeiten...' : 'Bild verarbeiten' }}
-        </button>
+  <div class="ocr-component">
+    <h2>OCR-Funktionalität</h2>
+    <h4>Lade ein Bild hoch, um den Text zu extrahieren und zu verbessern.</h4>
+
+    <!-- Dark Mode Toggle Button -->
+    <button class="dark-mode-toggle" @click="toggleDarkMode">
+      {{ isDarkMode ? 'Light Mode' : 'Dark Mode' }}
+    </button>
+
+    <!-- Bildvorschau -->
+    <div v-if="imagePreview" class="image-preview">
+      <h3>Bildvorschau:</h3>
+      <img :src="imagePreview" alt="Vorschau des hochgeladenen Bildes" @error="handleImageError" />
+    </div>
+
+    <!-- Bild-Upload und Button -->
+    <div class="input-area">
+      <input
+        type="file"
+        ref="fileInput"
+        @change="handleImageUpload"
+        accept="image/*"
+        class="image-input"
+      />
+      <button
+        @click="sendOcrRequest"
+        class="send-button"
+        :disabled="!selectedImage || loading"
+      >
+        <i class="fas fa-paper-plane"></i> OCR ausführen
+      </button>
+    </div>
+
+    <!-- Anzeige der extrahierten und verbesserten Texte -->
+    <div class="result-box">
+      <div v-if="loading" class="loading">Verarbeite das Bild...</div>
+      <div v-if="error" class="error">
+        <p>Fehler: {{ error }}</p>
       </div>
-      <div v-if="loading" class="loading-section">
-        <div class="spinner"></div>
-        <p>OCR läuft, bitte warten...</p>
-      </div>
-      <div v-if="ocr_text || markdown" class="result-section">
-        <h2>Ergebnis:</h2>
-        <div class="toggle-section">
-          <label>
-            <input type="radio" value="ocr" v-model="selectedVersion" />
-            Rohe OCR-Ausgabe
-          </label>
-          <label>
-            <input type="radio" value="markdown" v-model="selectedVersion" />
-            Verbesserte Version
-          </label>
+      <div v-if="rawText || improvedTextHtml" class="texts-container">
+        <div v-if="rawText" class="text-section raw-text-section">
+          <h3>Extrahierter Text:</h3>
+          <pre>{{ rawText }}</pre>
+          <button class="copy-button" @click="copyText(rawText)">Kopieren</button>
         </div>
-        <div v-if="selectedVersion === 'ocr'" class="raw-ocr-content">
-          <h3>Rohe OCR-Ausgabe:</h3>
-          <pre>{{ ocr_text }}</pre>
-          <button @click="copyToClipboard(ocr_text)">Text kopieren</button>
+        <div v-if="improvedTextHtml" class="text-section improved-text-section">
+          <h3>Verbesserter Text:</h3>
+          <div v-html="improvedTextHtml"></div>
+          <button class="copy-button" @click="copyText(improvedText)">Kopieren</button>
         </div>
-        <div v-if="selectedVersion === 'markdown'" class="markdown-content" v-html="renderedMarkdown"></div>
-        <button v-if="selectedVersion === 'markdown'" @click="copyToClipboard(markdown)">
-          Text kopieren
-        </button>
-        <p v-if="copySuccess" class="copy-success">Text wurde in die Zwischenablage kopiert!</p>
-        <p v-if="copyError" class="copy-error">Kopieren fehlgeschlagen. Bitte versuche es erneut.</p>
       </div>
     </div>
-  </template>
-  
-  <script>
-  import MarkdownIt from 'markdown-it';
-  import markdownItKatex from 'markdown-it-katex';
-  import 'katex/dist/katex.min.css';
-  import axios from 'axios';
-  
-  export default {
-    name: 'OCRView',
-    data() {
-      return {
-        imageFile: null,
-        imageSrc: '',
-        ocr_text: '',
-        markdown: '',
-        renderedMarkdown: '',
-        loading: false, // Neuer Ladezustand
-        selectedVersion: 'ocr', // Standardmäßig rohe OCR-Ausgabe
-        copySuccess: false, // Erfolg beim Kopieren
-        copyError: false,   // Fehler beim Kopieren
-      };
+  </div>
+</template>
+
+<script>
+import axios from "axios";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
+
+export default {
+  data() {
+    return {
+      selectedImage: null,
+      rawText: "",
+      improvedText: "",
+      improvedTextHtml: "",
+      imagePreview: "", // Neue Daten-Eigenschaft für die Bildvorschau
+      loading: false,
+      error: "",
+      isDarkMode: false,
+    };
+  },
+  methods: {
+    toggleDarkMode() {
+      this.isDarkMode = !this.isDarkMode;
+      document.body.classList.toggle("dark-mode", this.isDarkMode);
+      this.$el
+        .querySelector(".ocr-component")
+        .classList.toggle("dark-mode", this.isDarkMode);
     },
-    methods: {
-      handleFileUpload(event) {
-        const file = event.target.files[0];
-        if (file && this.isAllowedFile(file.name)) {
-          this.imageFile = file;
-          this.imageSrc = URL.createObjectURL(file);
-        } else {
-          alert('Ungültiger Dateityp. Bitte lade ein Bild hoch.');
+    handleImageUpload(event) {
+      const file = event.target.files[0];
+      if (file && this.isAllowedFile(file.name)) {
+        this.selectedImage = file;
+        this.error = "";
+
+        // Erstelle eine Vorschau des Bildes
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          this.imagePreview = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      } else {
+        this.error = `Ungültiges Bildformat. Erlaubt: ${[
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "bmp",
+          "tiff",
+        ].join(", ")}`;
+        this.selectedImage = null;
+        this.imagePreview = "";
+
+        // Setze das Dateieingabefeld zurück, falls ungültiges Bild
+        if (this.$refs.fileInput) {
+          this.$refs.fileInput.value = "";
         }
-      },
-      isAllowedFile(filename) {
-        const allowedExtensions = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff'];
-        const extension = filename.split('.').pop().toLowerCase();
-        return allowedExtensions.includes(extension);
-      },
-      async processImage() {
-        if (!this.imageFile) {
-          alert('Bitte wähle ein Bild aus, bevor du es verarbeitest.');
-          return;
-        }
-  
-        const formData = new FormData();
-        formData.append('image', this.imageFile);
-  
-        this.loading = true; // Ladezustand aktivieren
-        this.copySuccess = false; // Rücksetzen des Kopier-Status
-        this.copyError = false;
-        this.ocr_text = '';
-        this.markdown = '';
-        this.renderedMarkdown = '';
-  
-        try {
-          const response = await axios.post('http://localhost:5000/api/ocr', formData, {
-            headers: {
-              'Content-Type': 'multipart/form-data',
-            },
-          });
-  
-          if (response.data.ocr_text) {
-            this.ocr_text = response.data.ocr_text;
-          }
-  
-          if (response.data.markdown) {
-            this.markdown = response.data.markdown;
-            this.renderMarkdown();
-          }
-        } catch (error) {
-          console.error('Fehler bei der Verarbeitung:', error);
-          if (error.response && error.response.data && error.response.data.error) {
-            alert(`Fehler: ${error.response.data.error}`);
-          } else {
-            alert('Es gab einen Fehler bei der Verarbeitung des Bildes.');
-          }
-        } finally {
-          this.loading = false; // Ladezustand deaktivieren
-        }
-      },
-      renderMarkdown() {
-        const md = new MarkdownIt({
-          html: true,
-          linkify: true,
-          typographer: true,
-          breaks: true,
-        }).use(markdownItKatex, {
-          throwOnError: false,
-          errorColor: '#cc0000',
+      }
+    },
+    handleImageError() {
+      this.error = "Fehler beim Laden der Bildvorschau.";
+      this.imagePreview = "";
+    },
+    isAllowedFile(filename) {
+      const allowedExtensions = [
+        "png",
+        "jpg",
+        "jpeg",
+        "gif",
+        "bmp",
+        "tiff",
+      ];
+      const extension = filename.split(".").pop().toLowerCase();
+      return allowedExtensions.includes(extension);
+    },
+    async sendOcrRequest() {
+      if (!this.selectedImage) {
+        this.error = "Bitte wähle ein gültiges Bild aus.";
+        return;
+      }
+
+      this.loading = true;
+      this.error = "";
+      this.rawText = "";
+      this.improvedText = "";
+      this.improvedTextHtml = "";
+
+      // Senden als multipart/form-data
+      const formData = new FormData();
+      formData.append("image", this.selectedImage);
+
+      try {
+        const response = await axios.post("http://127.0.0.1:5000/ocr", formData, {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
         });
-  
-        this.renderedMarkdown = md.render(this.markdown);
-      },
-      async copyToClipboard(text) {
-        if (!text) return;
-  
-        try {
-          await navigator.clipboard.writeText(text);
-          this.copySuccess = true;
-          this.copyError = false;
-          setTimeout(() => {
-            this.copySuccess = false;
-          }, 3000); // Erfolgsnachricht nach 3 Sekunden ausblenden
-        } catch (error) {
-          console.error('Kopieren fehlgeschlagen:', error);
-          this.copyError = true;
-          this.copySuccess = false;
-          setTimeout(() => {
-            this.copyError = false;
-          }, 3000); // Fehlermeldung nach 3 Sekunden ausblenden
+
+        if (response.data.raw_text) {
+          this.rawText = response.data.raw_text;
+        } else {
+          this.error = "Keine Rohtextantwort erhalten.";
         }
-      },
+
+        if (response.data.improved_text) {
+          this.improvedText = response.data.improved_text;
+          // Konvertiere Markdown zu HTML und sichere es
+          const rawHtml = marked(this.improvedText);
+          this.improvedTextHtml = DOMPurify.sanitize(rawHtml);
+        } else {
+          this.error += " Keine verbesserte Textantwort erhalten.";
+        }
+      } catch (err) {
+        if (err.response && err.response.data && err.response.data.error) {
+          this.error = err.response.data.error;
+        } else {
+          this.error = "Ein unerwarteter Fehler ist aufgetreten.";
+        }
+      } finally {
+        this.loading = false;
+        this.selectedImage = null;
+        this.imagePreview = "";
+        // Setze das Dateieingabefeld zurück
+        if (this.$refs.fileInput) {
+          this.$refs.fileInput.value = "";
+        }
+      }
     },
-  };
-  </script>
-  
-  <style scoped>
-  .ocr-container {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 20px;
-    font-family: Arial, sans-serif;
-  }
-  
-  .upload-section {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin-bottom: 20px;
-  }
-  
-  .upload-section input[type="file"] {
-    margin-bottom: 10px;
-  }
-  
-  .image-preview {
-    max-width: 100%;
-    height: auto;
-    margin-top: 10px;
-    border: 1px solid #ddd;
-    padding: 5px;
-    border-radius: 5px;
-  }
-  
-  .loading-section {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin-top: 20px;
-  }
-  
-  .spinner {
-    border: 8px solid #f3f3f3; /* Light grey */
-    border-top: 8px solid #007bff; /* Blue */
-    border-radius: 50%;
-    width: 60px;
-    height: 60px;
-    animation: spin 2s linear infinite;
-    margin-bottom: 10px;
-  }
-  
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-  
-  .result-section {
-    margin-top: 20px;
-  }
-  
-  .toggle-section {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 20px;
-  }
-  
-  .toggle-section label {
-    margin: 0 10px;
-    font-weight: bold;
-  }
-  
-  .raw-ocr-content {
-    background-color: #f1f1f1;
-    padding: 15px;
-    border-radius: 5px;
-    border: 1px solid #ddd;
-    margin-bottom: 10px;
-  }
-  
-  .markdown-content {
-    background-color: #f9f9f9;
-    padding: 15px;
-    border-radius: 5px;
-    overflow: auto;
-    border: 1px solid #ddd;
-    margin-bottom: 10px;
-  }
-  
-  .markdown-content h1,
-  .markdown-content h2,
-  .markdown-content h3,
-  .markdown-content h4,
-  .markdown-content h5,
-  .markdown-content h6 {
-    margin-top: 20px;
-  }
-  
-  .markdown-content p {
-    line-height: 1.6;
-  }
-  
-  .markdown-content pre {
-    background-color: #eee;
-    padding: 10px;
-    border-radius: 5px;
-    overflow-x: auto;
-  }
-  
-  .markdown-content code {
-    background-color: #eee;
-    padding: 2px 4px;
-    border-radius: 3px;
-  }
-  
-  button {
-    padding: 10px 20px;
-    background-color: #007bff;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-  }
-  
-  button:disabled {
-    background-color: #aaa;
-    cursor: not-allowed;
-  }
-  
-  button:hover:not(:disabled) {
-    background-color: #0056b3;
-  }
-  
-  /* Feedback-Nachrichten */
-  .copy-success {
-    color: green;
-    margin-top: 10px;
-  }
-  
-  .copy-error {
-    color: red;
-    margin-top: 10px;
-  }
-  </style>
-  
+    copyText(text) {
+      navigator.clipboard.writeText(text).then(
+        () => {
+          alert("Text wurde in die Zwischenablage kopiert!");
+        },
+        () => {
+          alert("Kopieren fehlgeschlagen!");
+        }
+      );
+    },
+  },
+};
+</script>
+
+<style scoped>
+/* Grundlegende Stile für die OCR-Komponente */
+.ocr-component {
+  font-family: "Roboto", sans-serif;
+  margin: 20px auto;
+  padding: 25px;
+  border: 1px solid #ced4da; /* Neutrales Grau für Ränder */
+  border-radius: 12px;
+  max-width: 900px; /* Größer für bessere Aufteilung */
+  background-color: #f0f4f8; /* Helles Grau für den allgemeinen Hintergrund */
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); /* Leichter Schatten */
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  position: relative; /* Für den Dark Mode Toggle Button */
+}
+
+/* Dark Mode Stile */
+.ocr-component.dark-mode {
+  background-color: #1e1e1e; /* Dunkles Grau für den Hintergrund */
+  border-color: #444; /* Dunkleres Grau für Ränder */
+  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.1); /* Heller Schatten */
+}
+
+.ocr-component.dark-mode h2 {
+  color: #bb86fc; /* Kräftiges Lila im Dark Mode */
+}
+
+/* Dark Mode Toggle Button */
+.dark-mode-toggle {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background-color: #20c997; /* Lebendiges Türkis */
+  color: #fff;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.dark-mode-toggle:hover {
+  background-color: #1aa179; /* Etwas dunkleres Türkis für Hover */
+}
+
+.dark-mode-toggle:active {
+  transform: scale(0.98);
+}
+
+.ocr-component.dark-mode .dark-mode-toggle {
+  background-color: #bb86fc; /* Kräftiges Lila im Dark Mode */
+}
+
+.ocr-component.dark-mode .dark-mode-toggle:hover {
+  background-color: #985eff; /* Etwas dunkleres Lila für Hover im Dark Mode */
+}
+
+/* Bildvorschau */
+.image-preview {
+  padding: 15px;
+  border: 1px solid #ced4da;
+  border-radius: 8px;
+  background-color: #fff;
+  text-align: center;
+}
+
+.ocr-component.dark-mode .image-preview {
+  background-color: #2a2f32;
+  border-color: #444;
+}
+
+.image-preview img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin-top: 10px;
+}
+
+/* Eingabebereich */
+.input-area {
+  display: flex;
+  gap: 10px;
+}
+
+.image-input {
+  flex: 1;
+  padding: 12px 15px;
+  border: 1px solid #ced4da; /* Neutrales Grau für Ränder */
+  border-radius: 8px;
+  font-size: 1rem;
+  background-color: #fff;
+  color: #333;
+  cursor: pointer;
+}
+
+.ocr-component.dark-mode .image-input {
+  background-color: #333;
+  color: #fff;
+  border-color: #1e90ff; /* Kräftiges Blau für Fokus */
+}
+
+.send-button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background-color: #1e90ff; /* Kräftiges Blau */
+  color: #fff;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.3s, transform 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Leichter Schatten */
+}
+
+.send-button:hover {
+  background-color: #1c86ee; /* Etwas dunkleres Blau für Hover */
+  transform: translateY(-2px);
+}
+
+.send-button:active {
+  transform: translateY(0);
+}
+
+.ocr-component.dark-mode .send-button {
+  background-color: #bb86fc; /* Kräftiges Lila im Dark Mode */
+}
+
+.ocr-component.dark-mode .send-button:hover {
+  background-color: #985eff; /* Etwas dunkleres Lila für Hover im Dark Mode */
+}
+
+/* Ergebnis-Box */
+.result-box {
+  padding: 15px;
+  border: 1px solid #ced4da;
+  border-radius: 8px;
+  background-color: #fff;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.ocr-component.dark-mode .result-box {
+  background-color: #2a2f32;
+  border-color: #444;
+}
+
+/* Ladeanzeige */
+.loading {
+  text-align: center;
+  font-weight: bold;
+  color: #ffc107; /* Warmes Gelb für Ladeanzeigen */
+}
+
+/* Fehleranzeige */
+.error {
+  text-align: center;
+  color: #dc3545; /* Auffälliges Rot für Fehler */
+  font-weight: bold;
+  background-color: #f8d7da; /* Helleres Rot für Fehlerhintergrund */
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #dc3545; /* Auffälliges Rot für Fehler */
+}
+
+.ocr-component.dark-mode .error {
+  background-color: #721c24; /* Dunkleres Rot für Fehlerhintergrund im Dark Mode */
+  color: #f8d7da; /* Helles Rot für Text im Dark Mode */
+  border-color: #f5c6cb; /* Hellere Ränder für Fehler im Dark Mode */
+}
+
+/* Textabschnitte */
+.texts-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.text-section {
+  flex: 1 1 45%; /* Zwei Spalten bei ausreichend Platz */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.raw-text-section,
+.improved-text-section {
+  background-color: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+  position: relative;
+}
+
+.ocr-component.dark-mode .raw-text-section,
+.ocr-component.dark-mode .improved-text-section {
+  background-color: #343a40;
+  color: #f8f9fa;
+}
+
+.raw-text-section pre {
+  white-space: pre-wrap; /* Zeilenumbrüche beibehalten */
+  background-color: #e9ecef;
+  padding: 10px;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.ocr-component.dark-mode .raw-text-section pre {
+  background-color: #495057;
+  color: #f8f9fa;
+}
+
+.improved-text-section div {
+  /* Stil für das gerenderte Markdown */
+}
+
+.copy-button {
+  align-self: flex-end;
+  background-color: #28a745; /* Grün für Kopieren */
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.3s;
+}
+
+.copy-button:hover {
+  background-color: #218838;
+}
+
+.copy-button:active {
+  background-color: #1e7e34;
+}
+
+.ocr-component.dark-mode .copy-button {
+  background-color: #28a745;
+}
+
+.ocr-component.dark-mode .copy-button:hover {
+  background-color: #218838;
+}
+
+.ocr-component.dark-mode .copy-button:active {
+  background-color: #1e7e34;
+}
+</style>
